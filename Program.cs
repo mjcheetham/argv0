@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 
 string argv0 = null;
 
@@ -23,10 +24,21 @@ else if (OperatingSystem.IsLinux())
 
 Console.WriteLine(argv0);
 
-static string GetLinuxArgv0()
+static unsafe string GetLinuxArgv0()
 {
-	string selfExe = File.ReadAllText("/proc/self/exe");
-	return selfExe;
+	const int PATH_MAX = 4096;
+	byte[] pathBytes = Encoding.UTF8.GetBytes("/proc/self/exe");
+	IntPtr buf = Marshal.AllocHGlobal(PATH_MAX);
+	int len = readlink(pathBytes, buf, PATH_MAX);
+	
+	string path = null;
+	if (len > 0)
+	{
+		path = Marshal.PtrToStringAuto(buf, len);
+	}
+
+	Marshal.FreeHGlobal(buf);
+	return path;
 }
 
 static string GetMacOSArgv0()
@@ -37,11 +49,11 @@ static string GetMacOSArgv0()
 	IntPtr bufPtr = Marshal.AllocHGlobal(size);
 	int result = _NSGetExecutablePath(bufPtr, out size);
 
-	string name = result == 0 ? Marshal.PtrToStringAuto(bufPtr, size) : null;
+	string path = result == 0 ? Marshal.PtrToStringAuto(bufPtr, size) : null;
 
 	Marshal.FreeHGlobal(bufPtr);
 	
-	return name;
+	return path;
 }
 
 static string GetWindowsArgv0()
@@ -50,6 +62,9 @@ static string GetWindowsArgv0()
 	IntPtr argv0Ptr = Marshal.ReadIntPtr(argvPtr);
 	return Marshal.PtrToStringAuto(argv0Ptr);
 }
+
+[DllImport("libc", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+static extern int readlink(byte[] pathname, IntPtr buf, int bufsiz);
 
 [DllImport("libc", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
 static extern int _NSGetExecutablePath(IntPtr buf, out int bufsize);
