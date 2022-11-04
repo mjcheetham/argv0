@@ -1,8 +1,6 @@
 ﻿using System;
 using System.IO;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 
 string argv0 = null;
 
@@ -27,25 +25,23 @@ Console.WriteLine(argv0);
 
 static string GetLinuxArgv0()
 {
-	string cmdline = File.ReadAllText("/proc/self/cmdline");
-	return cmdline.Split('\0')[0];
+	string selfExe = File.ReadAllText("/proc/self/exe");
+	return selfExe;
 }
 
-const int MAXPATHLEN = 1024;
-const int PROC_PIDPATHINFO_MAXSIZE = 4 * MAXPATHLEN;
-
-static unsafe string GetMacOSArgv0()
+static string GetMacOSArgv0()
 {
-	var pid = Process.GetCurrentProcess().Id;
-	int result = 0;
-	byte* pBuffer = stackalloc byte[PROC_PIDPATHINFO_MAXSIZE];
-	result = proc_pidpath(pid, pBuffer, (uint)(PROC_PIDPATHINFO_MAXSIZE * sizeof(byte)));
-	if (result <= 0)
-	{
-		return null;
-	}
+	int size;
+	_NSGetExecutablePath(IntPtr.Zero, out size);
 
-	return Encoding.UTF8.GetString(pBuffer, result);
+	IntPtr bufPtr = Marshal.AllocHGlobal(size);
+	int result = _NSGetExecutablePath(bufPtr, out size);
+
+	string name = result == 0 ? Marshal.PtrToStringAuto(bufPtr, size) : null;
+
+	Marshal.FreeHGlobal(bufPtr);
+	
+	return name;
 }
 
 static string GetWindowsArgv0()
@@ -55,8 +51,8 @@ static string GetWindowsArgv0()
 	return Marshal.PtrToStringAuto(argv0Ptr);
 }
 
-[DllImport("/usr/lib/libproc.dylib", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-static extern unsafe int proc_pidpath(int pid, byte* buffer, uint bufferSize);
+[DllImport("libc", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+static extern int _NSGetExecutablePath(IntPtr buf, out int bufsize);
 
 [DllImport("Kernel32.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode, SetLastError = true)]
 static extern IntPtr GetCommandLine();
